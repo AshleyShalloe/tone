@@ -222,33 +222,8 @@ function getCurrentStepActiveCellHalfNoteArray() {
 }
 
 function playNoteByName(noteName) {
-    `
-        Plays a note given a name, e.g. A4 or C♯3
-        Will let you get away with using # instead of ♯
-        Assumes you have an audio context called audioCtx
-        `;
     var noteFrequency = getFrequencyFromNoteName(noteName);
-
-    // for reference
-    // you can make a kickdrum with
-    // oscillator.frequency.exponentialRampToValueAtTime(0.001, audioCtx.currentTime+0.5)
-
-    var oscillator = audioCtx.createOscillator();
-    oscillator.type = waveform ? waveform : "sine";
-    oscillator.frequency.setValueAtTime(noteFrequency, audioCtx.currentTime); // value in hertz
-
-    if (attackTime) {
-        mainGainNode.gain.setValueAtTime(0, audioCtx.currentTime);
-        mainGainNode.gain.linearRampToValueAtTime(1, attackTime);
-    }
-
-    if (releaseTime) {
-        mainGainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + (stepDuration - releaseTime));
-    }
-
-    oscillator.connect(mainGainNode);
-    oscillator.start();
-    oscillator.stop(audioCtx.currentTime + stepDuration);
+    synth.triggerAttackRelease(noteFrequency, stepDuration);
 }
 
 function playDoubleNoteByName(noteName) {
@@ -258,13 +233,7 @@ function playDoubleNoteByName(noteName) {
         Assumes you have an audio context called audioCtx
         `;
     var noteFrequency = getFrequencyFromNoteName(noteName);
-    var oscillator = audioCtx.createOscillator();
-
-    oscillator.type = waveform ? waveform : "sine";
-    oscillator.frequency.setValueAtTime(noteFrequency, audioCtx.currentTime); // value in hertz
-    oscillator.connect(mainGainNode);
-    oscillator.start();
-    oscillator.stop(audioCtx.currentTime + stepDuration * 2);
+    synth.triggerAttackRelease(noteFrequency, stepDuration * 2);
 }
 
 function playHalfNoteByName(noteName, pattern) {
@@ -273,29 +242,15 @@ function playHalfNoteByName(noteName, pattern) {
         Will let you get away with using # instead of ♯
         Assumes you have an audio context called audioCtx
         `;
+    const now = Tone.now();
     var noteFrequency = getFrequencyFromNoteName(noteName);
-
-    var oscillator = audioCtx.createOscillator();
-    oscillator.type = waveform ? waveform : "sine";
-    oscillator.frequency.setValueAtTime(noteFrequency, audioCtx.currentTime); // value in hertz
-    oscillator.connect(mainGainNode);
-
-    var oscillator2 = audioCtx.createOscillator();
-    oscillator2.type = waveform ? waveform : "sine";
-    oscillator2.frequency.setValueAtTime(noteFrequency, audioCtx.currentTime); // value in hertz
-    oscillator2.connect(mainGainNode);
-
     if (pattern == "01") {
-        oscillator.start(audioCtx.currentTime + stepDuration / 2);
-        oscillator.stop(audioCtx.currentTime + stepDuration);
+        synth.triggerAttackRelease(noteFrequency, stepDuration / 2, now + stepDuration / 2);
     } else if (pattern == "10") {
-        oscillator.start();
-        oscillator.stop(audioCtx.currentTime + stepDuration / 2);
+        synth.triggerAttackRelease(noteFrequency, stepDuration / 2);
     } else if (pattern == "11") {
-        oscillator.start();
-        oscillator.stop(audioCtx.currentTime + stepDuration / 2);
-        oscillator2.start(audioCtx.currentTime + stepDuration / 2);
-        oscillator2.stop(audioCtx.currentTime + stepDuration);
+        synth.triggerAttackRelease(noteFrequency, stepDuration / 2);
+        synth.triggerAttackRelease(noteFrequency, stepDuration / 2, now + stepDuration / 2);
     } else {
         console.error("Invalid pattern provided to playHalfNoteByName()");
     }
@@ -321,8 +276,8 @@ function playChordArray(chordArray) {
     if (!chordArray.length) {
         return;
     }
-    // chordArray.map(x => setTimeout(playNoteByName, 0, x))
-    chordArray.map((x) => playNoteByName(x));
+    // synth.triggerAttackRelease(chordArray.map(x => x.replace("♯", "#")), stepDuration)
+    synth.triggerAttackRelease(chordArray.map(x => getFrequencyFromNoteName(x)), stepDuration)
 }
 
 function playHalfChordArray(chordArray) {
@@ -330,15 +285,17 @@ function playHalfChordArray(chordArray) {
         return;
     }
     // chordArray.map(x => setTimeout(playHalfNoteByName, 0, x[0], x[1]))
-    chordArray.map((x) => playHalfNoteByName(x[0], x[1]));
+    // chordArray.map((x) => playHalfNoteByName(x[0], x[1]));
+    const now = Tone.now()
+    synth.triggerAttackRelease(chordArray.filter(x => x[1] == "10" || x[1] == "11").map(x => getFrequencyFromNoteName(x[0])), stepDuration/2)
+    synth.triggerAttackRelease(chordArray.filter(x => x[1] == "01" || x[1] == "11").map(x => getFrequencyFromNoteName(x[0])), stepDuration/2, now + stepDuration/2)
 }
 
 function playDoubleChordArray(chordArray) {
     if (!chordArray.length) {
         return;
     }
-    // chordArray.map(x => setTimeout(playDoubleNoteByName, 0, x))
-    chordArray.map((x) => playDoubleNoteByName(x));
+    synth.triggerAttackRelease(chordArray.map(x => getFrequencyFromNoteName(x)), stepDuration*2)
 }
 
 function getTheScore(asString) {
@@ -469,6 +426,9 @@ function initAudioContext() {
         mainGainNode = audioCtx.createGain();
         mainGainNode.connect(audioCtx.destination);
         mainGainNode.gain.value = volume;
+    }
+    if (!synth) {
+        synth = new Tone.PolySynth(Tone.Synth).toDestination();
     }
 }
 
@@ -1085,8 +1045,8 @@ function keyHandler(e) {
     }
 
     // don't do anything special if any input elements have focus
-    if (["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName)){
-        return
+    if (["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName)) {
+        return;
     }
 
     switch (e.key) {
@@ -1147,8 +1107,8 @@ function keyHandler(e) {
             break;
         case "Backspace":
             e.preventDefault();
-            deleteColAtCurrentPos()
-            break
+            deleteColAtCurrentPos();
+            break;
         default:
             console.log(e.key);
     }

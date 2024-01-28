@@ -11,6 +11,7 @@
     <script src="res/conway.js" async></script>
     <script src="res/draggable.js" async></script>
     <link rel="stylesheet" href="res/main.css">
+    <script src="res/tonejs/Tone.js"></script>
 </head>
 
 <body>
@@ -200,6 +201,9 @@
 
         window.addEventListener("keydown", keyHandler)
     }
+
+    var synth
+    var now
 
     // globals
     var numberOfOctaves = 2
